@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using TodoApi.DTO;
 using TodoApi.Models;
 
 namespace TodoApi.Controllers
@@ -19,62 +20,84 @@ namespace TodoApi.Controllers
             _context = context;
         }
 
-        [HttpGet]
-        public async Task<ActionResult<IEnumerable<TodoItem>>> GetTodoItems()
+        [HttpGet(Name = "GetAllTodoItems")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        public async Task<ActionResult<IEnumerable<TodoitemDTO>>> GetTodoItems()
         {
-            return await _context.TodoItems.ToListAsync();
+            return await _context.TodoItems.Select(item => ItemToDTO(item)).ToListAsync();
         }
 
-        [HttpGet("{int:id}")]
-        public async Task<ActionResult<TodoItem>> GetTodoItem(int id)
+        [HttpGet("{id:int}", Name = "GetASingleTodoItem")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<TodoitemDTO>> GetTodoItem(int id)
         {
             var todoItem = await _context.TodoItems.FindAsync(id);
             if (todoItem == null)
             {
-                return NotFound($"todo not found");
+                return NotFound("todo not found");
             }
-            return todoItem;
+            return ItemToDTO(todoItem);
         }
 
-        [HttpPost]
-        public async Task<ActionResult<TodoItem>> PostTodoItem(TodoItem todoItem)
+        [HttpPost(Name = "CreateANewTodoitem")]
+        [ProducesResponseType(StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult<TodoitemDTO>> PostTodoItem(TodoitemDTO todoitemDTO)
         {
-            todoItem.CreatedAt = DateTime.Now;
+            var todoItem = new TodoItem
+            {
+                Name = todoitemDTO.Name,
+                IsComplete = todoitemDTO.IsComplete
+            };
             _context.TodoItems.Add(todoItem);
             await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetTodoItem), new { id = todoItem.Id }, todoItem);
+            return CreatedAtAction(
+                nameof(GetTodoItem),
+                new { id = todoItem.Id },
+                ItemToDTO(todoItem)
+            );
         }
 
-        [HttpPut("{int:id}")]
-        public async Task<ActionResult<TodoItem>> PutTodoItem(int id, TodoItem todoItem)
+        [HttpPut("{id:int}", Name = "UpdateTodoItem")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
+        public async Task<ActionResult> PutTodoItem(int id, TodoitemDTO todoitemDTO)
         {
-            if (id != todoItem.Id)
+            if (id != todoitemDTO.Id)
             {
                 return BadRequest();
             }
 
-            _context.Entry(todoItem).State = EntityState.Modified;
+            var todoItem = await _context.TodoItems.FindAsync(id);
+            if (todoItem == null)
+            {
+                return NotFound("no todo item found");
+            }
+
+            todoItem.Name = todoitemDTO.Name;
+            todoItem.IsComplete = todoitemDTO.IsComplete;
 
             try
             {
                 await _context.SaveChangesAsync();
             }
-            catch (DbUpdateConcurrencyException)
+            catch (DbUpdateConcurrencyException) when (!TodoItemExists(id))
             {
-                if (!TodoItemExists(id))
-                {
-                    return NotFound("No todo item found");
-                }
-                else
-                {
-                    throw;
-                }
+                return NotFound("No todo item found");
             }
 
             return NoContent();
         }
 
+        [HttpDelete("{id:int}", Name = "DeleteTodoItem")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        [ProducesResponseType(StatusCodes.Status500InternalServerError)]
         public async Task<ActionResult<TodoItem>> DeleteTodoItem(int id)
         {
             var todoItem = await _context.TodoItems.FindAsync(id);
@@ -88,9 +111,17 @@ namespace TodoApi.Controllers
             return NoContent();
         }
 
-        public bool TodoItemExists(int id)
+        private bool TodoItemExists(int id)
         {
             return _context.TodoItems.Any(todoItem => todoItem.Id == id);
         }
+
+        private static TodoitemDTO ItemToDTO(TodoItem todoItem) =>
+            new()
+            {
+                Id = todoItem.Id,
+                Name = todoItem.Name,
+                IsComplete = todoItem.IsComplete
+            };
     }
 }
