@@ -15,6 +15,6 @@ namespace TodoApi.Models
 
         public bool IsComplete { get; set; }
 
-        public DateTime CreatedAt { get; set; }
+        public DateTime CreatedAt { get; set; } = DateTime.Now;
     }
 }
